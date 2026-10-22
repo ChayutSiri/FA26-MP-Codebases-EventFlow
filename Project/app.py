@@ -36,12 +36,17 @@ CORS(app)
 csrf = CSRFProtect(app)
 
 login_manager = LoginManager(app)
-login_manager.login_view = "login"
-login_manager.login_message = None
 
 @login_manager.user_loader
 def load_user(username):
     return User(username) if username in load_users() else None
+
+@login_manager.unauthorized_handler
+def unauthorized():
+    # API callers get a JSON error; browsers get sent to the login page
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Login required"}), 401
+    return redirect(url_for("login"))
 
 @app.errorhandler(CSRFError)
 def handle_csrf_error(e):
@@ -112,6 +117,7 @@ def get_calendar_service():
     return build("calendar", "v3", credentials=creds, cache_discovery=False)
 
 @app.route("/api/calendar/events", methods=["POST"])
+@login_required
 def add_calendar_event():
     calendar_id = os.getenv("GOOGLE_CALENDAR_ID")
     if not calendar_id:
@@ -137,6 +143,7 @@ def add_calendar_event():
 
 # Email processing endpoints
 @app.route("/api/process_emails", methods=["POST"])
+@login_required
 def process_emails():
     """Fetch emails, parse them, and return events (no Firebase storage)"""
     try:
@@ -183,6 +190,7 @@ def process_emails():
 
 # Streaming endpoint for real-time event processing
 @app.route("/api/process_emails_stream", methods=["GET"])
+@login_required
 def process_emails_stream():
     """Fetch and parse emails with streaming updates"""
     import json
@@ -231,11 +239,13 @@ def process_emails_stream():
 
 # Test endpoint
 @app.route("/api/test", methods=["GET"])
+@login_required
 def test():
     return jsonify({"status": "API is working!"}), 200
 
 # Parse custom text endpoint
 @app.route("/api/parse_text", methods=["POST"])
+@login_required
 def parse_text():
     """Parse custom text input to extract event information"""
     print("\n" + "="*50)
